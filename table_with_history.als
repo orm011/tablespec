@@ -97,24 +97,51 @@ pred init[t : VersionedTable] {
 	t.log.isEmpty
 }
 
-fact "extensionality" { 
-	all disj vr1, vr2 : VersionedRow | not (vr1.data = vr2.data and vr1.vmin = vr2.vmin and vr1.vmax = vr2.vmax)
+//fact "extensionality" { 
+//	all disj vr1, vr2 : VersionedRow | not (vr1.data = vr2.data and vr1.vmin = vr2.vmin and vr1.vmax = vr2.vmax)
+//}
+
+fun query[t: VersionedTable]: set Row {
+	{ r : Row | some vr : t.entries { vr.data = r and vr.vmax = none } }
 }
 
 pred insert[t : VersionedTable, r : Row] {
 	r not in { r : Row | some vr : t.entries { vr.data = r and vr.vmax = none } }
-	//r not in { r : Row | some vr : t.entries { vr.data = r and vr.vmax = none } }
-	t.entries' = t.entries + { vr : VersionedRow | vr.data = r and vr.vmin = t.version' and no vr.vmax }
+	one vr : VersionedRow {
+		vr.data = r
+		vr.vmin = t.version'
+		no vr.vmax
+		t.entries' = t.entries + vr
+	}
+
 	t.version' = add[t.version,1]
-	t.log' = t.log.add[{ le : LogEntry | le.row = r and le.oper = Insert }]
+
+	one le : LogEntry {
+		le.row = r
+		le.oper = Insert 
+		t.log' = t.log.add[le]
+	}
 }
 
 pred delete[t: VersionedTable, r : Row] {
 	r in { r : Row | some vr : t.entries { vr.data = r and vr.vmax = none } }
-	t.entries' = t.entries - { vr : VersionedRow | vr.data = r and no vr.vmax }
-					+ { vr : VersionedRow | vr.data = r and vr.vmax = t.version' }
+	
+	one vrold, vrnew : VersionedRow {
+		vrold.data = r
+		no vrold.vmax
+
+		vrnew.data = r
+		vrnew.vmax = t.version'
+
+		t.entries' = t.entries - vrold + vrnew
+	}
 	t.version' = add[t.version,1]
-	t.log' = t.log.add[{ le : LogEntry | le.row = r and le.oper = Delete }]
+
+	one le : LogEntry {
+		le.row = r
+		le.oper = Delete 
+		t.log' = t.log.add[le]
+	}
 }
 
 pred noop[t : VersionedTable] {
@@ -135,23 +162,6 @@ fact "init2" {
 }
 
 example2 : run {
-		eventually some t : VersionedTable { #t.entries > 2 }
 		eventually some t : VersionedTable, r : Row { delete[t, r] }
 }
-
-
-// why are multiple things inserted at the same time?
-
-// pred update[t: Table, r1 : Row, r2 : Row] {
-// 	r1 in t.data
-// 	r2 not in t.data
-// 	t.data' = t.data - r1 + r2
-// }
-
-// pred noop[t : Table] {
-// 	t.data' = t.data
-// 	t.history' = t.history
-// }
-
-
 
