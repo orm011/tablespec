@@ -218,3 +218,6 @@ check_consistent_impl: check consistent_table
 // 2. insert/delete predicate inadvertently too weak:
 	// there are instances of things outside the relation
 	// a set of things can be empty, seem to need to have the predicate outside.
+	// identity of objects not based on members, 
+// 3. forgetting to check 'always' for operations
+// 4. etc.
