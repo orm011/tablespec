@@ -58,9 +58,10 @@ pred delete_correct[t : Table] {
  	t.data
  }
 
-fun query_at[t : Table, v : Int ] : set Row {
-	t.history[v].data
+fun query[t : Table, v : Int ] : set Row {
+	v < #t.history  => t.history[v].data else query[t]
 }
+
  pred step[t : Table, r : Row] {
  	(insert[t, r] or delete[t,r])
  }
@@ -69,14 +70,6 @@ fun query_at[t : Table, v : Int ] : set Row {
  fact "init" {
  	all t : Table { init[t] }
  }
-
-
-// example1 : run {
-// 		always some t : Table { step[t] or noop[t] }
-// 		eventually some t : Table { #t.data > 3 }
-// 		eventually some t : Table, r : Row  { delete[t,r] }
-// }
-// for 5 
 
 
 // vmin vmax implementation.
@@ -115,8 +108,11 @@ fun query[t: VersionedTable]: set Row {
 	{ r : Row | some vr : t.entries { vr.data = r and vr.vmax = none } }
 }
 
-fun query_at[vt : VersionedTable, v : Int]: set Row {
-	{ r : Row | some vr : vt.entries { vr.data = r and vr.vmin <= v and v < vr.vmax }}
+fun query[vt : VersionedTable, v : Int]: set Row {
+	{ r : Row | some vr : vt.entries { vr.data = r
+							vr.vmin <= v
+							(vr.vmax != none) => (v < vr.vmax) }
+	}
 }
 
 pred insert[t : VersionedTable, r : Row] {
@@ -183,9 +179,9 @@ fact lockstep {
 
 assert consistent_table {
 	always all vt : VersionedTable, t : Table { query[vt] = query[t] }
-//	always all vt : VersionedTable, v : Int {
-//		v+1 <= vt.version => query_at[vt,v] = query_at[vt, v+1] 
-//	}
+	always all vt : VersionedTable, t : Table, v : Int {
+		v <= vt.version => query[vt,v] = query[t, v] 
+	}
 }
 
 assert vconsistent {
@@ -205,7 +201,7 @@ pred delete_correct[t : VersionedTable] {
 //check {all vt : VersionedTable | delete_correct[vt]} for 4
 //check {all vt : VersionedTable | delete_correct[vt] }
 
-check_consistent_impl: check consistent_table
+check_consistent_impl: check consistent_table for 2 steps
 
 //example2 : run {
 //		eventually some vt : VersionedTable { #query[vt] >1 }
@@ -215,9 +211,9 @@ check_consistent_impl: check consistent_table
 
 // tricky mistakes
 // 1. no noop => no examples, 
-// 2. insert/delete predicate inadvertently too weak:
+// 2. insert/delete predicate inadvertently too weak for the 'action' predicates
 	// there are instances of things outside the relation
 	// a set of things can be empty, seem to need to have the predicate outside.
 	// identity of objects not based on members, 
 // 3. forgetting to check 'always' for operations
-// 4. etc.
+// 4. sequence operations
