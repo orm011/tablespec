@@ -1,65 +1,62 @@
 sig Row {}
 
-// sig Snapshot {
-// 	data : set Row
-// }
+ sig Snapshot {
+ 	data : set Row
+ }
+//
+one sig Table {
+ 	var data : set Row,
+ 	var history : seq Snapshot
+ }
 
-// sig Table {
-// 	var data : set Row,
-// 	var history : seq Snapshot
-// }
+ pred update_history[t : Table ] 
+ {
+ 	one s : Snapshot {
+ 		 s.data = query[t]
+ 		 t.history' = t.history.add[s]
+ 	}
+ }
+//
+ pred insert[ t: Table, r : Row] {
+ 	r not in t.data
+ 	t.data'  = t.data + r
+	update_history[t] 
+ }
+//
+ pred delete[t: Table, r : Row] {
+ 	r in t.data
+ 	t.data' = t.data - r
+	update_history[t]
+ }
+//
+ pred update[t: Table, r1 : Row, r2 : Row] {
+ 	r1 in t.data
+ 	r2 not in t.data
+ 	t.data' = t.data - r1 + r2
+ }
+//
+ pred noop[t : Table] {
+ 	t.data' = t.data
+ 	t.history' = t.history
+ }
+//
+ pred init[t : Table] {
+ 	no t.data
+ 	t.history.isEmpty
+ }
 
-// pred insert[ t: Table, r : Row] {
-// 	r not in t.data
-// 	t.data'  = t.data + r
-// }
+ fun query [t : Table ] : set Row {
+ 	t.data
+ }
+ pred step[t : Table, r : Row] {
+ 	(insert[t, r] or delete[t,r])
+ }
 
-// pred delete[t: Table, r : Row] {
-// 	r in t.data
-// 	t.data' = t.data - r
-// }
 
-// pred update[t: Table, r1 : Row, r2 : Row] {
-// 	r1 in t.data
-// 	r2 not in t.data
-// 	t.data' = t.data - r1 + r2
-// }
+ fact "init" {
+ 	all t : Table { init[t] }
+ }
 
-// pred noop[t : Table] {
-// 	t.data' = t.data
-// 	t.history' = t.history
-// }
-
-// pred init[t : Table] {
-// 	no t.data
-// 	t.history.isEmpty
-// }
-
-// fun query [t : Table ] : Snapshot {
-// 	{ s : Snapshot |  s.data = t.data}
-// }
-
-// pred update_history[t : Table ] 
-// {
-// 	some s : Snapshot {
-// 		 s.data = t.data 
-// 		 t.history' = t.history.add[s]
-// 	}
-// }
-
-// pred step[t : Table] {
-// 	some r : Row  {
-// 		( (insert[t, r] or delete[t,r]) and update_history[t] )
-// 	}
-// }
-
-// fact "init" {
-// 	all t : Table { init[t] }
-// }
-
-// fact {
-// 	#Table = 1
-// }
 
 // example1 : run {
 // 		always some t : Table { step[t] or noop[t] }
@@ -150,18 +147,29 @@ pred noop[t : VersionedTable] {
 	t.log' = t.log
 }
 
-pred step[t : VersionedTable] {
-	one r : Row  { 
-		insert[t,r] or delete[t,r]
-	}
+pred step[vt : VersionedTable, t : Table] {
+	(one r : Row  { 
+		(insert[vt, r] and insert[t, r]  )
+		or 	(delete[vt, r] and delete[t,r])
+	})
+	or (noop[vt] and noop[t])
 }
 
 fact "init2" {
 	all t : VersionedTable { init[t] }
-	always all t : VersionedTable { step[t] or noop[t] }
 }
 
+fact lockstep {
+	always all vt : VersionedTable, t: Table { step[vt, t] }
+}
+
+assert consistent {
+	all vt : VersionedTable, t : Table { query[vt] = query[t] }
+}
+
+//check consistent for 5
+
 example2 : run {
-		eventually some t : VersionedTable, r : Row { delete[t, r] }
+		eventually some vt : VersionedTable { #query[vt] >1 }
 }
 
