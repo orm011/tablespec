@@ -28,6 +28,15 @@ one sig Table {
  	t.data' = t.data - r
 	update_history[t]
  }
+
+pred insert_correct[t : Table] {
+	always all  r : Row { insert[t, r] => after (r in query[t]) }
+}
+
+pred delete_correct[t : Table] {
+	always all  r : Row { delete[t, r] => after (r not in query[t]) }
+}
+
 //
  pred update[t: Table, r1 : Row, r2 : Row] {
  	r1 in t.data
@@ -48,6 +57,10 @@ one sig Table {
  fun query [t : Table ] : set Row {
  	t.data
  }
+
+fun query_at[t : Table, v : Int ] : set Row {
+	t.history[v].data
+}
  pred step[t : Table, r : Row] {
  	(insert[t, r] or delete[t,r])
  }
@@ -102,6 +115,10 @@ fun query[t: VersionedTable]: set Row {
 	{ r : Row | some vr : t.entries { vr.data = r and vr.vmax = none } }
 }
 
+fun query_at[vt : VersionedTable, v : Int]: set Row {
+	{ r : Row | some vr : vt.entries { vr.data = r and vr.vmin <= v and v < vr.vmax }}
+}
+
 pred insert[t : VersionedTable, r : Row] {
 	r not in { r : Row | some vr : t.entries { vr.data = r and vr.vmax = none } }
 	one vr : VersionedRow {
@@ -123,12 +140,13 @@ pred insert[t : VersionedTable, r : Row] {
 pred delete[t: VersionedTable, r : Row] {
 	r in { r : Row | some vr : t.entries { vr.data = r and vr.vmax = none } }
 	
-	one vrold, vrnew : VersionedRow {
+	one vrold : t.entries, vrnew : VersionedRow {
 		vrold.data = r
 		no vrold.vmax
 
-		vrnew.data = r
+		vrnew.vmin = vrold.vmin
 		vrnew.vmax = t.version'
+		vrnew.data = r
 
 		t.entries' = t.entries - vrold + vrnew
 	}
@@ -163,13 +181,40 @@ fact lockstep {
 	always all vt : VersionedTable, t: Table { step[vt, t] }
 }
 
-assert consistent {
-	all vt : VersionedTable, t : Table { query[vt] = query[t] }
+assert consistent_table {
+	always all vt : VersionedTable, t : Table { query[vt] = query[t] }
+//	always all vt : VersionedTable, v : Int {
+//		v+1 <= vt.version => query_at[vt,v] = query_at[vt, v+1] 
+//	}
+}
+
+assert vconsistent {
+	always all vr : VersionedRow 
+		{ (some vt : VersionedTable | vr in vt.entries ) => (no vr.vmax or vr.vmin < vr.vmax) }
+}
+
+pred insert_correct[vt : VersionedTable] {
+	always all  r : Row { insert[vt, r] => after (r in query[vt]) }
+}
+
+pred delete_correct[t : VersionedTable] {
+	always all  r : Row { delete[t, r] => after (r not in query[t]) }
 }
 
 //check consistent for 5
+//check {all vt : VersionedTable | delete_correct[vt]} for 4
+//check {all vt : VersionedTable | delete_correct[vt] }
 
-example2 : run {
-		eventually some vt : VersionedTable { #query[vt] >1 }
-}
+check_consistent_impl: check consistent_table
 
+//example2 : run {
+//		eventually some vt : VersionedTable { #query[vt] >1 }
+//}
+
+
+
+// tricky mistakes
+// 1. no noop => no examples, 
+// 2. insert/delete predicate inadvertently too weak:
+	// there are instances of things outside the relation
+	// a set of things can be empty, seem to need to have the predicate outside.
